@@ -1,0 +1,24 @@
+[package]
+# NOT a workspace member (see the root Cargo.toml comment): this crate is
+# built on the Thor itself, where CPython + maturin live. It exists so the
+# orchestration edge (world-mcp, builder-ide experiments, notebook driving)
+# can hold a real kernel in-process with zero serialization on the hot
+# path. The kernel never depends on Python; Python borrows the kernel.
+name = "ecology-py"
+description = "Python bindings (pyo3, abi3) for the ecology-thor kernel — the orchestration edge, not the hot path."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/SI-Thor/ecology-thor"
+
+[lib]
+name = "ecology_thor"
+crate-type = ["cdylib"]
+
+[dependencies]
+ecology-core = { path = "../ecology-core" }
+pyo3 = { version = "0.30", features = ["abi3-py310"] }
+
+# Standalone: `cargo build` here must not drag the whole workspace in.
+[workspace]

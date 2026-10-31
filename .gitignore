@@ -1,0 +1,25 @@
+# Rust
+/target
+**/*.rs.bk
+
+# CUDA build artifacts (kernels/build/*.ptx are produced on-device by `make kernels`)
+crates/ecology-cuda/kernels/build/
+
+# Python edge
+.venv/
+__pycache__/
+*.pyc
+dist/
+*.whl
+
+# Local experiment data (never commit run artifacts)
+data/
+runs/
+*.nsys-rep
+*.qdrep
+
+# Editor
+.idea/
+.vscode/
+*.swp
+.DS_Store

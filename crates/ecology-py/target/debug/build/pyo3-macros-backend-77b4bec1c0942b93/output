@@ -1,0 +1,3 @@
+cargo:rustc-check-cfg=cfg(wip_feature_std)
+cargo:rerun-if-env-changed=PYO3_WIP_NO_STD
+cargo:rustc-cfg=wip_feature_std

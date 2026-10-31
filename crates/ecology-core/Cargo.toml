@@ -1,0 +1,20 @@
+[package]
+name = "ecology-core"
+description = "Zero-dependency cognitive-ecology kernel for AGX Thor: WHY ledger + attention economy, deterministic tick, population scale."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# INTENTIONALLY EMPTY.
+#
+# The kernel is std-only and stays dependency-free. Every line that runs in
+# the real-time loop must be reviewable in this repo (see docs/SAFETY.md);
+# a dependency is a place a memory leak or a nondeterminism can hide.
+# Bindings (pyo3), CUDA glue (cudarc) and simulation harnesses live in
+# sibling crates and are feature-gated there, never here.
+
+[dev-dependencies]
+# Also intentionally empty — tests use only std.

@@ -1,0 +1,35 @@
+[package]
+name = "ecology-cuda"
+description = "CUDA/PTX device sweeps for the ecology-thor kernel (Blackwell sm_110), with bit-exact CPU reference mirrors and a cudarc host shim."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+# The real device path: cudarc + the driver API. Without it this crate is
+# pure CPU (the reference mirrors) and builds on any machine, including
+# x86_64 CI — the placement of the device boundary is a build-time choice
+# (docs/PLACEMENT.md).
+cuda = ["dep:cudarc"]
+
+[dependencies]
+ecology-core = { path = "../ecology-core" }
+# cudarc: driver-API bindings with runtime dynamic loading, so this crate
+# builds on machines with no CUDA installed and only *runs* the device path
+# where libcuda exists (i.e. on the Thor). `cuda-13000` pins the CUDA 13
+# API surface, which is what JetPack 7 on Thor ships.
+cudarc = { version = "0.19", optional = true, default-features = false, features = [
+    "driver",
+    "cuda-13000",
+    "dynamic-loading",
+    # `nvrtc` is enabled for its `Ptx` type (load_module's argument) — we
+    # only use Ptx::from_file + the driver's cuModuleLoad; no NVRTC
+    # compilation happens at runtime (kernels are built by nvcc at make time).
+    "nvrtc",
+] }
+
+[dev-dependencies]
+# intentionally empty

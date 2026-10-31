@@ -1,0 +1,115 @@
+# ecology-thor CI
+#
+# Four jobs, mirroring the build matrix in crates/ecology-cuda/src/lib.rs:
+#   lint-test : fmt + clippy(-D warnings) + tests on x86_64 (no CUDA)
+#   aarch64   : cargo check for the Thor's target (no CUDA, no cross-linking
+#               needed because cudarc is dynamic-loading and feature-gated)
+#   ptx-gate  : assemble the hand-written PTX headlessly via the pip
+#               nvidia-cuda-nvcc wheel's ptxas (no GPU, no container)
+#   secrets   : the scanner from tools/ — belt and braces, in case a local
+#               pre-push hook was skipped
+#
+# The device-parity job (cargo test --features cuda against real kernels)
+# runs ON THE THOR via `make test-device`, not here — GitHub has no sm_110.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Tests (golden determinism included)
+        run: cargo test --workspace
+      - name: Kernel-only crate compiles without the cuda feature
+        run: cargo check -p ecology-cuda
+      - name: Secret scan
+        run: python3 tools/check_secrets.py
+
+  aarch64-check:
+    # The Thor is aarch64; catch target-specific breakage before it lands.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - name: Install cross linker
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+      - name: Check aarch64 (core + sim + cuda-without-feature)
+        run: cargo check --target aarch64-unknown-linux-gnu --workspace
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      - name: Check the cudarc device shim for aarch64
+        # Dynamic loading means the CUDA driver only needs to exist on the
+        # Thor; x86_64 CI can still type-check the shim for the target.
+        run: cargo check --target aarch64-unknown-linux-gnu -p ecology-cuda --features cuda
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+  ptx-gate:
+    # Assemble the hand-written PTX with ptxas from the pip wheel — a real
+    # syntax/register gate with zero CUDA install. The .cu -> .ptx compile
+    # needs full nvcc and runs in the CUDA container job below.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ptxas
+        run: pip install nvidia-cuda-nvcc-cu12==12.9.86
+      - name: Locate ptxas and assemble
+        run: |
+          PTXAS=$(python3 -c "import glob; print(glob.glob('/opt/hostedtoolcache/Python/**/site-packages/nvidia/cuda_nvcc/bin/ptxas', recursive=True)[0])")
+          make -C crates/ecology-cuda/kernels hand-ptx-check PTXAS="$PTXAS" ECO_SM=sm_100
+
+  cuda-container-compile:
+    # Full nvcc: compile kernels/ecology.cu to PTX for compute_110 in a CUDA
+    # container. Compile-only (no GPU present); catches kernel-source errors.
+    runs-on: ubuntu-24.04
+    container:
+      image: nvidia/cuda:12.9.1-devel-ubuntu24.04
+    steps:
+      - name: Install git & make
+        run: apt-get update && apt-get install -y git make
+      - uses: actions/checkout@v4
+      - name: Compile kernels to PTX (compute_110) and assemble (sm_100*)
+        # CUDA 12.9 nvcc knows compute_110 PTX emission; its ptxas tops out
+        # below sm_110, so we assemble at sm_100 for the register report.
+        # The on-device `make ptx-check` does the real sm_110 assembly.
+        run: |
+          make -C crates/ecology-cuda/kernels all ECO_ARCH=compute_110 CUDA_HOME=/usr/local/cuda
+          ptxas_bin=/usr/local/cuda/bin/ptxas
+          $ptxas_bin -arch=sm_100 -v -o /tmp/ecology.cubin crates/ecology-cuda/kernels/build/ecology.ptx
+          echo "cuda compile gate OK"
+
+  python-bindings:
+    # The pyo3 crate is excluded from the workspace; check it compiles
+    # (abi3, so the exact CPython version here doesn't matter much).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Python dev headers
+        run: sudo apt-get update && sudo apt-get install -y python3-dev
+      - uses: Swatinem/rust-cache@v2
+      - name: Check bindings
+        run: cargo check --manifest-path crates/ecology-py/Cargo.toml

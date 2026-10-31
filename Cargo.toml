@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/ecology-core",
+    "crates/ecology-sim",
+    "crates/ecology-cuda",
+]
+# `ecology-py` (pyo3 bindings) is deliberately NOT a workspace member: it is
+# built on the AGX Thor itself (`make python`), where the CPython headers and
+# maturin live. Keeping it out keeps the default `cargo` invocation free of
+# any Python coupling — the kernel must never depend on the orchestration edge.
+exclude = ["crates/ecology-py"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/SI-Thor/ecology-thor"
+
+[workspace.dependencies]
+ecology-core = { path = "crates/ecology-core" }
+
+[profile.release]
+# Deterministic, comparable numbers: single codegen unit, thin LTO.
+# The kernel's hot loops are small; CGU=1 costs little and removes a source
+# of run-to-run variance that matters when we pin WCET budgets on the Thor.
+opt-level = 3
+codegen-units = 1
+lto = "thin"
+panic = "unwind"
+
+[profile.bench]
+inherits = "release"

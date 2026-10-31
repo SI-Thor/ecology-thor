@@ -1,0 +1,80 @@
+//
+// warp_max_f32.ptx - one warp, one job: the max of 32 non-negative floats.
+//
+// This is the repo's one piece of hand-written PTX. It exists because the
+// operation it performs - a single-warp reduction in the innermost loop of
+// the auction's telemetry path - is exactly where the compiled path pays
+// for shuffle scaffolding we do not need, and because it demonstrates, in
+// eight instructions, the two device facts this project leans on:
+//
+//   1. THE MONOTONIC INTEGER TRANSFORM. For non-negative IEEE-754 floats,
+//      interpreting the bit pattern as unsigned int preserves order:
+//      a < b  <=>  bits(a) < bits(b). So a float max over a warp is a
+//      single `redux.sync.max.u32` - one instruction, no shuffle ladder.
+//      (Scores are clamped to [0,1] upstream, so non-negativity is a
+//      kernel invariant here.)
+//
+//   2. redux.sync ON THOR. `redux.sync.op.u32` requires sm_80+; the f32
+//      flavor requires sm_100a+ (not portable to our build). The integer
+//      flavor with the transform above is the portable trick - same speed
+//      class, works on Ampere through Blackwell.
+//
+// Semantics: lane L (L = tid.x & 31) loads scores[L], the warp reduces the
+// max, lane 0 stores it to *result. Launch with exactly 32 threads.
+//
+// TARGET NOTE: we target sm_90 as the portable floor (any sm_80+ works for
+// the integer redux). PTX is forward-compatible: the driver JITs this for
+// the Thor's sm_110. CI assembles it with ptxas (make hand-ptx-check);
+// on-device tests compare it against score_stats_kernel's max
+// (tests/parity.rs).
+//
+// docs/PTX_NOTES.md has the full rationale, including why this is NOT used
+// on any bit-exactness-critical path (reduction order is warp-shaped,
+// while the CPU reference is sequential - fine for a telemetry max, wrong
+// for the authoritative spend math). ASCII comments only: ptxas rejects
+// non-ASCII bytes.
+
+.version 8.3
+.target sm_90
+.address_size 64
+
+//
+// .entry warp_max_f32(
+//     .param .u64 scores,   // const float* - 32 consecutive floats
+//     .param .u64 result    // float*       - one float, written by lane 0
+// )
+//
+.visible .entry warp_max_f32(
+    .param .u64 scores,
+    .param .u64 result
+)
+{
+    .reg .b32  lane;      // this thread's lane id (0..31)
+    .reg .b32  shift;     // lane * 4 (byte offset into the float array)
+    .reg .b32  bits;      // the float's bits, as ordered u32
+    .reg .b32  best;      // warp-wide max of `bits`
+    .reg .b64  ptr;       // &scores[lane]
+    .reg .b64  out;       // result pointer
+    .reg .b64  off;       // widened byte offset
+    .reg .f32  v;         // the loaded float
+
+    // out = result
+    ld.param.u64  out, [result];
+    // lane = tid.x & 31  (mask, not modulo - one instruction)
+    mov.u32       lane, %tid.x;
+    and.b32       lane, lane, 31;
+    // ptr = scores + lane * 4
+    ld.param.u64  ptr, [scores];
+    shl.b32       shift, lane, 2;
+    cvt.u64.u32   off, shift;
+    add.u64       ptr, ptr, off;
+    // v = *ptr ; bits = __float_as_uint(v)
+    ld.global.f32 v, [ptr];
+    mov.b32       bits, v;
+    // best = warp max of bits - THE instruction this file exists for.
+    redux.sync.max.u32  best, bits, 0xffffffff;
+    // *out = __uint_as_float(best)   (lane 0's `best` is the warp result)
+    mov.b32       v, best;
+    st.global.f32 [out], v;
+    ret;
+}
