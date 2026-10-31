@@ -100,3 +100,29 @@ case the device sweep is for.
 5. Consider `world://why` mock data generator for builder-ide's UI
    before the door exists (the JSON contract is frozen — they can build
    against it today).
+
+### Review round — four outside eyes (zero-shot personas)
+
+After the v0.1.0 push, the architecture docs went through four persona
+reviews (Rust RT engineer, CUDA kernel engineer, game-engine architect,
+SRE). Adopted / rejected, with reasons:
+
+| Finding | Verdict | Action |
+|---|---|---|
+| Cascade stack was `Vec::new()` — first kill allocates (rust-rt) | **Real bug vs. our own no-alloc claim** | Preallocated to arena capacity (`why.rs`). The unbounded-growth worry was already bounded by `Config::capacity`, but the allocation was real. |
+| No durability leg (SRE: "crash = complete state loss") | **Real, top 3am risk** | Added `Journal::flush_to` — self-describing binary segments (magic + count + segment chain hash + length-prefixed events), portable, concatenation-replayable. Not a database; the caller owns fsync policy. The full replay basis already existed; now it has a sink. |
+| "Parity gap: three implementations, one test surface" (rust-rt) | **Already half-true** | `tests/parity.rs` now exists with two legs: CPU leg (reference mirrors vs. ledger, randomized populations, always in CI) + device leg (feature `cuda`, on-hardware gate before v0.2 adoption — the file the docs kept promising). |
+| CUDA Graph for per-level launches (cuda, worldsim) | Already roadmap #5 | Priority confirmed by two reviewers independently; stays after measurement (launch overhead must *show* first). |
+| Partial-select instead of full sort (worldsim) | Already roadmap #3 | Same: the sort is only superlinear pain at stress populations; realistic world-gen is 130 µs total. Measure first. |
+| "Move only hot columns" (worldsim) | **Rejected — wrong for this hardware** | There are no transfers on Tegra unified memory; the mirror *is* a plain host memcpy at DRAM speed. Reviewer pattern-matched to discrete-GPU economics. |
+| "Parallelize the tick across cores" (worldsim) | **Rejected — violates the single-writer law** | The phases are µs-scale; concurrency would buy latency variance, which is the one thing the kernel refuses to buy. Documented in ARCHITECTURE §3. |
+| "Watchdog thread" (SRE, rust-rt) | **Already answered by design** (RT.md §5) | The summary stopping *is* the alarm; an external monitor reads it without kernel cooperation. Re-documented rather than re-designed. |
+| Coalescing in justify_level (cuda) | Noted, not a defect | Level node indices are spawn-ordered (mostly contiguous); the gather over `parent[]` is the algorithm, not a layout bug. Worth a profile on-device before touching. |
+
+What got stolen from us (the reviewers' "one thing to steal", for the
+record): the safe-mode decay-only degradation pattern, the zero-copy
+unified-memory placement policy, the four-state never-delete ledger,
+and the bit-exact triple-implementation discipline.
+
+**Result**: v0.1.1 — cascade preallocation, journal durability sink,
+parity gate file. 36 tests green, guard green.

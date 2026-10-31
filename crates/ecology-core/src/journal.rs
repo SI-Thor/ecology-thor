@@ -275,6 +275,40 @@ impl Journal {
         self.ring.iter()
     }
 
+    /// Flush retained events to a durable sink, in ring order.
+    ///
+    /// The wire format is the chain's own encoding — a tiny framing header
+    /// (magic `ECOJ`, u32 event count, u64 chain hash of exactly these
+    /// events) followed by each event's canonical bytes with a length
+    /// prefix. A flushed file is therefore: (a) replayable as a complete
+    /// event stream, (b) tamper-evident via its embedded chain hash, and
+    /// (c) appendable across flushes by concatenation (each flush is
+    /// self-describing; replay folds the whole file).
+    ///
+    /// This is the v0.1 answer to the durability question: not a database,
+    /// not fsynced (the caller owns `W` and the durability policy), but a
+    /// complete, honest, portable record the moment you ask for one.
+    pub fn flush_to<W: std::io::Write>(&self, out: &mut W) -> std::io::Result<u64> {
+        // Header.
+        out.write_all(b"ECOJ")?;
+        out.write_all(&(self.ring.len() as u32).to_le_bytes())?;
+        // Chain hash over exactly the events being flushed.
+        let mut chain = 14695981039346656037u64;
+        let mut scratch = Vec::with_capacity(64);
+        for event in &self.ring {
+            encode(event, &mut scratch);
+            chain = fnv_mix(chain, &scratch);
+        }
+        out.write_all(&chain.to_le_bytes())?;
+        // Events, length-prefixed.
+        for event in &self.ring {
+            encode(event, &mut scratch);
+            out.write_all(&(scratch.len() as u32).to_le_bytes())?;
+            out.write_all(&scratch)?;
+        }
+        Ok(chain)
+    }
+
     /// Retained event count.
     #[inline]
     pub fn retained(&self) -> usize {
@@ -329,6 +363,34 @@ mod tests {
         assert!(j.dropped() > 0);
         assert_eq!(j.retained(), 16);
         assert!(j.events_hashed() >= 40);
+    }
+
+    #[test]
+    fn flush_is_self_describing_and_deterministic() {
+        let mut j1 = Journal::new(8);
+        let mut j2 = Journal::new(8);
+        for i in 0..6 {
+            let e = Event::Transition {
+                id: EntityId(i),
+                from: WhyState::Alive,
+                to: WhyState::Unknown,
+                reason: Reason::Lapsed,
+                tick: i,
+            };
+            j1.append(e.clone());
+            j2.append(e);
+        }
+        let mut b1 = Vec::new();
+        let mut b2 = Vec::new();
+        let h1 = j1.flush_to(&mut b1).unwrap();
+        let h2 = j2.flush_to(&mut b2).unwrap();
+        assert_eq!(b1, b2, "same events -> byte-identical flush");
+        assert_eq!(h1, h2);
+        assert_eq!(&b1[0..4], b"ECOJ");
+        // The flushed chain differs from the live chain (live includes
+        // dropped events; the flush covers only retained ones) — both are
+        // honest, over their own scope.
+        assert!(b1.len() > 4 + 4 + 8);
     }
 
     #[test]

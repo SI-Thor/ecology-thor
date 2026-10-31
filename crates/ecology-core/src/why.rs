@@ -200,7 +200,10 @@ impl WhyLedger {
             mass_spawned_total: 0.0,
             mass_dissipated_total: 0.0,
             transitions: Vec::new(),
-            cascade_stack: Vec::new(),
+            // Preallocated to the arena size: the worst cascade is the
+            // whole population, and steady state must not allocate
+            // (found in the first outside design review — good catch).
+            cascade_stack: Vec::with_capacity(cap),
             cascade_pending: 0,
             counts: StateCounts::default(),
         }

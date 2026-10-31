@@ -530,6 +530,12 @@ impl Ecology {
         self.journal.iter()
     }
 
+    /// Flush the retained journal to a durable sink (see
+    /// [`Journal::flush_to`]). Returns the flushed segment's chain hash.
+    pub fn flush_journal<W: std::io::Write>(&self, out: &mut W) -> std::io::Result<u64> {
+        self.journal.flush_to(out)
+    }
+
     // ------------------------------------------- device-mirror accessors
     // Flat views the CUDA sweeps mirror into unified memory. Slices, not
     // iterators, on purpose: a slice is exactly what a zero-copy device
