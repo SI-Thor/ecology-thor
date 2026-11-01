@@ -126,3 +126,125 @@ and the bit-exact triple-implementation discipline.
 
 **Result**: v0.1.1 — cascade preallocation, journal durability sink,
 parity gate file. 36 tests green, guard green.
+
+---
+
+## Session 2 — 2026-11-01 — the review round: device harness, bake-off, rebases, the door, the recorded night
+
+**The review's five asks** (builder-ide seat): make the device steps
+runnable by a stranger; bake the two admission daemons off with the
+same tests; rebase the three proposal branches (14 behind, units
+wrong, lease unmapped); route `world://why` through a core door; and
+show the auction on the recorded mini-night-2. All five landed, each
+pushed with its evidence.
+
+### What was built
+
+1. **The device harness** (`tools/thor-device.sh` + `docs/DEVICE.md` +
+   `make device`): preflight → guard → kernels → parity → ptx-check →
+   bench → a paste-ready report bundle, one PASS/FAIL line per step,
+   under the box rules (flock `~/lm-wt/heavy.lock`, ≥25 GiB floor,
+   122 GiB usable — THOR.md corrected: 128 GB module / MemTotal
+   ≈125.7 GiB / 122 GiB working figure, sources cited). The guard step
+   doubles as the golden-determinism aarch64 leg. Hygiene: 207
+   committed build-artifact files (`ecology-py/target/`) untracked.
+
+2. **The mini-night-2 replay** (`tools/replay_mini_night2.py`,
+   `docs/analysis/mini-night-2-replay.md`): the 18-variant ledger
+   reconstructed from every published aggregate (`--check` verifies;
+   robustness across 6 alternative reconstructions), then three legs.
+   Parity: at the runner's own prices the auction makes the identical
+   allocation. Value pricing: night-1's ledger says a third seed line's
+   expected gain is 0.000 — the veto cuts all six v3 variants, 30.6%
+   less GPU / 31.6% less wall at identical winners (2.857 both). The
+   bar arithmetic: 11.76 = 4.508×1.5+5 was computed from the
+   prop.512-mispriced ask; on the prop.night band the same night is
+   53.9%. Honest caveats in the doc (n=3, Wilson upper 0.56, the
+   same-seed replay, nothing cuts at the bar on this night under any
+   policy).
+
+3. **The admission bake-off** (`tools/ecology-admit`, `tools/bakeoff.sh`,
+   `docs/BAKEOFF.md`): our daemon adopts thor-admit's lease semantics
+   verbatim (reservation arithmetic, kernel-held locks, watchdog
+   discipline, peaks.jsonl schema, wire protocol) so the harness runs
+   the same three tests against both — plus the ecology's three: the
+   chained decision journal (FNV-1a per line, `journal --verify`
+   breaks on tampering — unit-tested), the lease-as-purpose WHY states
+   (stop → UNKNOWN, not dead), and the stall law (a lease silent past
+   the horizon is harvested with memory fine — the silent-hang class a
+   byte watchdog cannot see). **Verified end-to-end on the 3.5 GiB CI
+   box at 1 GiB scale: all seven lines PASS, the shared three
+   identical on both daemons.** The ledger answer (BAKEOFF.md): yes to
+   the chained journal (~50 lines on their side), yes to stall
+   semantics as a client convention, no to the four-state machinery
+   inside a memory daemon.
+
+4. **The three rebases**: builder-ide `research/ecology-bridge` onto
+   core-judge main (Rails now speak the night's `Rail` axes verbatim —
+   gpu_minutes/hosted_cents/wall_minutes; `lease_for` maps a winning
+   bid onto a thor-admit acquire; `LEASE_EVENTS_TO_WHY` maps the
+   daemon lifecycle onto the ledger; the study addendum re-checks
+   core/judge (the typed EV source — a below-τ judgment sets no EV,
+   which the veto law already agrees with), tiles+OPE (journal the bid
+   set, not just the winner, or the log is not off-policy evaluable —
+   the replay's reconstruction exists because the runner logs only
+   what ran), core-doors (the agent claim on every bid) and B3's
+   always-on daytime (a permanent Maintenance-class bidder).
+   infinigen-thor `research/ecology-admission`: the lease composition
+   (`lease.py` — Null/Recording/ThorAdmit clients; a refused lease
+   leaves the job queued and ALIVE, tested) + the proposal addendum
+   (the honest note: our first prototype had no memory story at all).
+   thor-world's why-stream was already merged; its follow-up is (5).
+
+5. **The why door** (builder-ide `docs/design/why-door.md` +
+   thor-world `research/ecology-why-door`): the review was right —
+   world-mcp is a pure client, so the why digest must arrive through
+   the core, not a side channel. The proposal: `POST /v1/why/digest`
+   (the ecology's publisher door; one `why.digest` audit event, the
+   single writer, the closed set grown by one the tiles way) +
+   `GET /v1/why/summary` (the fold; unwired → 501 with the seam named,
+   the `/v1/world/scene` precedent) + no new stream door (the SSE
+   fanout already is one). thor-world's branch reads the door
+   (`fetch_digest`, `why_door_events`), registers `world://why`, and
+   degrades honestly; five new door tests with a fake CoreClient.
+
+### The session's own bugs (kept honest)
+
+- The journal chain resumed from a **swapped (seq, chain) tuple** —
+  seqs started at 2216829734 (the FNV basis read as a tick). Found by
+  the chain test; fixed; the test now catches it forever.
+- **`rss_by_pgid` read /proc/stat field 23 (starttime) as rss** — the
+  watchdog's first live run showed an 8 TB victim. Field 24 verified
+  against `/proc/<pid>/status` VmRSS; fixed.
+- The connection thread **returned after acquire**, closing the
+  connection before held/release could arrive — leases leaked until
+  the held-grace reaped them. The connection now stays open for its
+  whole lease.
+- The flock probe raced the **grant→held window** (first client_gone
+  at 0.05 s); the probe now applies only to leases that said held,
+  with a 10 s grace for the rest.
+- The bake-off harness itself: a misaligned `start_daemon` arg list,
+  stale sockets left as directories, per-test state dirs overwriting
+  failure evidence, scale math that only worked at 122 GiB, and a
+  journal-unwrap parser that broke thor-admit's flat log lines. Each
+  found by a red line, fixed, and kept honest in the commit.
+- The CI sandbox **deletes release binaries between tool calls**
+  (debug binaries and small files survive); the harness now builds
+  both daemons itself in one invocation — which was the
+  runnable-by-a-stranger requirement all along.
+
+### Open threads (next sessions)
+
+1. **The Thor run**: `make device` (the seat fills BENCHMARKS/PLACEMENT
+   from the report) and `tools/bakeoff.sh` (the real 30 GiB rules) —
+   the two scripts this session existed to make one-command.
+2. The bake-off's fold-in, whichever way it goes: the chained journal
+   on thor-admit's side, or thor-admit's measured subtleties on ours.
+3. The why door's landing review (token class, retention, units —
+   the three open questions in the proposal).
+4. v0.2 device-authoritative sweeps once parity passes on sm_110;
+   the `--device-bench` mode the report names so PLACEMENT's
+   crossovers become measurements.
+5. A second recorded night for the replay — ideally one where the bar
+   truly binds, so the "cut by score vs cut by position" claim moves
+   from mechanism to measurement.

@@ -127,7 +127,11 @@ was computed from the wrong band (the same night is a 54% night on the right one
   parity harness + the three sibling-repo bridges (INTEGRATION.md).
 - **v0.2**: device-authoritative sweeps (the ledger writes *through*
   unified memory), partial-select auction, on-device measured placement
-  thresholds.
+  thresholds. The admission bake-off (`tools/bakeoff.sh`, same three
+  tests as builder-ide's thor-admit) decides whose daemon owns the
+  memory axis; the why door proposal (builder-ide
+  `research/ecology-bridge`, `docs/design/why-door.md`) is how the
+  digest reaches thor-world's `world://why` through the core.
 - **v0.3**: durable journal (replay is already a complete basis — every
   transition is an event), snapshot anchors, `world://why` resource live
   in thor-world, builder-ide rail exchange running against real renders.
@@ -147,6 +151,7 @@ was computed from the wrong band (the same night is a 54% night on the right one
 | [docs/INTEGRATION.md](docs/INTEGRATION.md) | bridges to builder-ide / infinigen-thor / thor-world + the frozen JSON contract |
 | [docs/JOURNAL.md](docs/JOURNAL.md) | the build log — decisions and their reasons |
 | [docs/analysis/mini-night-2-replay.md](docs/analysis/mini-night-2-replay.md) | the auction vs the night runner on a recorded night |
+| [docs/BAKEOFF.md](docs/BAKEOFF.md) | the admission bake-off: one harness, two daemons, the same three tests |
 
 ## License
 
