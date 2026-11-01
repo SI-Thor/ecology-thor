@@ -436,3 +436,119 @@ three bridge commits ride clean. Our two research reads:
    bid set — tiles rule 8 — and the read-only mirror scores it), and
    the object-lease door as its own proposal with the one law written
    in.
+
+---
+
+## Session 5 — 2026-11-01 — the round the box got busy
+
+**Where the round started.** The sandbox had been recycled (fresh box:
+3 GiB, 2 cores, no toolchain — rebuilt), but the remotes told the real
+story: while we were away, the collaborator merged thor-admit to
+builder-ide main — grown into the **presence round** (a presence queue
+that runs registered work when no live request waits, pre-empted by
+memory SIGTERM or GPU SIGSTOP; four accounting tiers; a time ledger
+that books every hour with its idle causes) — and pushed main past our
+branches again (110 commits beyond the bridge's base). The overnight
+Infinigen sweep (the second recorded night) is in flight on their side.
+Nobody had taken our three waiting branches yet.
+
+**What this session did, in order:**
+
+1. **The fold-in, rebuilt on the daemon as it stands today**
+   (`research/ecology-ledger`, 97cbb04 + b1f3386, force-with-lease):
+   the bake-off verdict priced the chained decision journal at ~50
+   lines; the branch that built it rode the pre-presence daemon, and
+   the merge took everything but the chain. Rebuilt against the new
+   daemon: every daemon.log line carries `seq`/`chain` (restart-resume,
+   prefix tolerance, tamper naming — same semantics, same FNV
+   constants), and a second commit chains the ledger's hours too —
+   `ledger.jsonl` is now an accounting record, and an edited hour is a
+   report that lies the same way an edited decision line does.
+   `thor-admit verify` walks both. peaks.jsonl deliberately unchained
+   (advisory, derived from decision lines — the README says why).
+   Tests: unit (edit breaks at its line, resume numbers on, the
+   round-trip untouched) + integration (the real daemon's own log
+   verifies through the CLI; a post-mortem's "fix" of a granted peak is
+   named by seq; the test passes its own floor, so any box runs it) +
+   the smoke test ends in `verify` now. Clippy clean. On this box: lib
+   88/89 and integration 12/14 — both shortfalls are the device-gated
+   tests that fail on the pristine baseline here too (the 122 GiB
+   meminfo assertion; the hog-growth tests that need real memory).
+2. **The bridge, rebased, and the presence mapping written down**
+   (`research/ecology-bridge`, cf8594f; clean rebase — the delta
+   touches no file main touched — bridge 19/19, night+judge 374/374):
+   study doc §7.7. The daemon grew a time axis, so the note the
+   journals promised ("when two schedulers touch, write them down
+   against each other") got written: the auction prices what the night
+   buys and its jurisdiction ends at the night's ledger; the presence
+   scheduler prices what the gaps do and its jurisdiction ends where a
+   live lease wants the memory or the GPU. The tier mapping for our
+   work (winning bids live; the replay/shadow scoring practice — the
+   tier's own description; parity study; pre-generation preparation),
+   the law (neither scheduler ever schedules inside the other's
+   jurisdiction — the 11.76-min bar is what two schedulers both
+   thinking they own the box's time looks like), the units note (the
+   ledger measures power in mW, the core prices joules, the one
+   conversion stays in the core), and three concrete first residents
+   for the presence queue — the exp doc's own open question, answered
+   from our side, each priced by the daemon's learned peaks.
+3. **The why-door branch, repaired onto the stream round**
+   (`research/ecology-why-door` on thor-world, 6311f3b): the branch
+   rode 19 commits behind main, and rebasing surfaced two real breaks
+   it had never been run against — the resource listing is seven now
+   (world://why), and the purity test's import scan caught the mock's
+   `random`. Fixed: the mock draws from the same LCG its chain hash
+   already uses (one less import, and the mock's behaviour and its
+   chain now come from the same arithmetic — my own sort-order mistake
+   in the seven-resource list, caught by the suite on the first run,
+   is kept honest below). Full thor-world suite on this box: 54/54
+   (after `pip install -e` — the harness boots the server as a
+   subprocess per test, which needs the package installed; the
+   pristine-main comparison run had the same two environment failures
+   before the install).
+4. **daemon_ledger.py** (ecology-thor main, f7735c9): the box's side of
+   the second-night comparison — reads thor-admit's ledger.jsonl,
+   reports tier seconds, idle by cause (with the README's own meaning
+   beside each), the unattributed number flagged, GPU power/busy with
+   sources, and the morning-after lines that tell
+   `waiting_for_memory` from `no_work_registered`. Validated three
+   ways: `--check` reproduces every number the lab record published
+   for the two measured windows (exp-thor-admit §12); real files
+   written through Ledger's own close path — one from main's build
+   (unchained), one through the chained branch — both parse and
+   report. Stdlib-only, read-only. The night's side (the replay's
+   shadow allocation against these hours) waits for the recorded
+   night; this half runs the morning after, on any box.
+
+**The session's own bugs (kept honest)**
+
+- The sort order in the seven-resource list: I wrote `world://why`
+  before `world://vocabulary`, the suite failed on the first run, and
+  the actual server had been right all along — my manual check had
+  even shown the resource present, truncated out of view by a `tail`.
+  Read the whole output before blaming the box.
+- The first push of the rebuilt ledger branch was rejected
+  ("stale info"): force-with-lease computes its lease from a tracking
+  ref, and pushing to a raw URL has none. The fix is the explicit
+  expected value (`--force-with-lease=branch:sha`) — the safer form,
+  and now the habit.
+
+**Open threads (carried)**
+
+1. The Thor run, now four-legged: `make device` + `tools/bakeoff.sh` +
+   `cargo test -p ecology-cuda --features cuda` + the fold-in's
+   integration test (any box).
+2. Three reviews pending: the fold-in (PR-ready on main's daemon), the
+   bridge's §7 answers + §7.7, and the why-door landing (the core's
+   `/v1/why/summary` end still waits on Casey — the thor-world side is
+   green and ready).
+3. The second recorded night: when the sweep's hours land in
+   ledger.jsonl, run daemon_ledger.py on them and put the two
+   morning-after lines beside the replay's shadow allocation — the
+   comparison §7.7 describes, first real instance.
+4. The presence queue's first residents (§7.7's three): register them
+   on the box when the fold-in lands, `--peak auto`, and let the
+   daemon's own history price them.
+5. The collaborator's research stream (OpenSenseNova, PhysAg3D,
+   OpenEBFM, the waiting list) keeps naming energy — the joules-rail
+   decision (§7.4) will come back around; the answer is written.

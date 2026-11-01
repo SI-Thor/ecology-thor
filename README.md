@@ -121,6 +121,13 @@ variants whose expected gain was exactly zero — 30.6% less GPU, 31.6% less wal
 the same winners — and the learned-peak pricing exposes that the 11.76-min bar
 was computed from the wrong band (the same night is a 54% night on the right one).
 
+`tools/daemon_ledger.py` — the box's side of the second recorded night: reads
+thor-admit's `ledger.jsonl` (the presence round's hours, by tier and idle
+cause) and reports where the box's time went, chained lines and unchained
+alike. The morning-after lines tell `waiting_for_memory` (the night
+under-budgeted) from `no_work_registered` (the box had room and nobody
+asked) — two failures the night's own ledger cannot tell apart.
+
 ## Where it's going
 
 - **v0.1 (this)**: Rust kernel + reference mirrors + device kernels +
