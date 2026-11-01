@@ -110,6 +110,15 @@ fn fnv_mix(chain: u64, bytes: &[u8]) -> u64 {
     h
 }
 
+/// The chain mixer, exported for downstream tools that chain-hash their
+/// own records (e.g. `tools/ecology-admit` chains every daemon decision
+/// line with this exact function, so the whole SI-Thor stack shares one
+/// tamper-evidence convention).
+#[inline]
+pub fn fnv1a64(chain: u64, bytes: &[u8]) -> u64 {
+    fnv_mix(chain, bytes)
+}
+
 /// Canonical byte encoding of an event. Fixed-width, little-endian, no
 /// variability — the chain hash depends on nothing but the event content.
 fn encode(event: &Event, buf: &mut Vec<u8>) {

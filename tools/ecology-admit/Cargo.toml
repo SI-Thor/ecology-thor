@@ -1,0 +1,17 @@
+[package]
+name = "ecology-admit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "The ecology's memory-admission daemon: thor-admit's lease semantics plus the WHY ledger — every decision a chained, replayable transition."
+
+[dependencies]
+ecology-core = { path = "../../crates/ecology-core" }
+serde_json = "1"
+libc = "0.2"
+
+[[bin]]
+name = "ecology-admit"
+path = "src/main.rs"

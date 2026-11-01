@@ -4,6 +4,7 @@ members = [
     "crates/ecology-core",
     "crates/ecology-sim",
     "crates/ecology-cuda",
+    "tools/ecology-admit",
 ]
 # `ecology-py` (pyo3 bindings) is deliberately NOT a workspace member: it is
 # built on the AGX Thor itself (`make python`), where the CPython headers and
