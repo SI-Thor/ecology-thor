@@ -248,3 +248,115 @@ pushed with its evidence.
 5. A second recorded night for the replay — ideally one where the bar
    truly binds, so the "cut by score vs cut by position" claim moves
    from mechanism to measurement.
+
+---
+
+## Session 3 — 2026-11-01 — the quiet hours: fold-ins, the rebase that waited, and the questions answered
+
+**Where the round started.** The five directives of session 2 were all
+pushed before the box went quiet; this session began by reading what
+moved upstream while we slept. Three findings:
+
+1. **The bridge was merged.** builder-ide main took
+   `research/ecology-bridge` at `74e8e55` ("a pure-Python mirror …
+   read-only", pinned `verify-eb`) — the v1 mirror, 500 lines, rails
+   in the box's own units. The two session-2 commits that followed
+   (the night's units + the lease mapping, the why door) were pushed
+   *after* the collaborator's last activity (17:21), so they sat
+   unreviewed on a branch 34 commits behind a main that kept moving.
+2. **Main moved 34 commits**, and two of them touch our seams:
+   `b565e88` re-priced the mesh stage at what the night spends
+   (`prop.mesh.512/1024` — the old band sold the mesh stage 3.4×
+   cheap on the GPU lane), and `655ac8f` landed the never-wait
+   conductor (request-level, the cascade's cloud half — a different
+   layer from the night-level auction; complementary, not competing).
+   Re-checked both against the bridge: nothing after the merge
+   touched `core/ecology_bridge` or `core.records.Rail`'s axes, so
+   the units wiring holds as-is; the re-pricing changes *prices*,
+   not *units*, which is exactly the separation the bridge was built
+   to have.
+3. **thor-admit moved 13 commits** (clocks named, the judge's four
+   calls, tests enforcing the brief's memory cap) — and the bake-off
+   verdict's cheapest test was still unclaimed.
+
+**What this session did, in order:**
+
+1. **The rebased delta** (`25c4849`): the two unmerged bridge commits
+   rebased onto current main — the merge-base content was
+   byte-identical to what main merged, so the rebase was clean and
+   the branch is now exactly two commits on top of main: "the night's
+   own units + the winning bid as a thor-admit lease" and "the why
+   door". Tests: 19/19 ecology_bridge, 332/332 night+judge on this
+   box (the full suite needs the USD wheels and a bigger clock
+   budget than the sandbox gives; the delta touches no file any
+   other test imports — verified by grep, which is the isolation the
+   mirror was promised to have).
+2. **The fold-in, built** (builder-ide `research/ecology-ledger`,
+   `1193626`): BAKEOFF.md's verdict said the chained journal was the
+   one thing worth adopting and priced it at ~50 lines — the
+   cheapest way to test that claim is to build it on top of
+   thor-admit as it stands today. `src/journal.rs`: every daemon.log
+   line carries `seq` (unique across restarts; the chain resumes
+   from the tail) and `chain` (running FNV-1a over the line's own
+   bytes); `thor-admit verify` re-walks the file and either reports
+   the head or names the seq and the reason (edited / numbering
+   jumped / not a chained event); lines an older daemon wrote are a
+   reported prefix, not a failure. The mixer is inlined — same
+   constants as `ecology_core::journal::fnv1a64`, so chains walked
+   here and in the ecology agree on identical input — and the crate
+   stays dependency-free. Unit tests (edit breaks at its line, a gap
+   or a mid-file restart breaks the numbering, old prefix reported,
+   resume numbers on) plus an integration test (the real daemon's
+   log verifies through the CLI; a post-mortem's "fix" of a granted
+   peak is named by seq). The integration test passes its own floor
+   so it runs identically on a 3 GiB CI box and on the Thor. Clippy
+   clean, all targets; the one lib failure on this box is the
+   device-gated 122 GiB assertion, which fails on the pristine
+   baseline too.
+3. **The why door's three questions, answered** (`e9370d9`): each
+   from the core's code, not preference — token class `seat` (a new
+   `service` class means editing every door's allowed set, which is
+   new gating; `seat` already sits in `TOKEN_CLASSES` used by no
+   door); retention keep-everything (the store has no retention
+   machinery at all, the stream is smaller than a night's
+   `day.change` traffic, the replay methodology depends on
+   completeness, and the publisher owns the decimation valve);
+   joules as-published with units named in the contract's next
+   append-only version (a door that converts is a second place
+   accounting arithmetic lives — the 11.76-min bar was a
+   units/pricing confusion that survived review for exactly that
+   reason).
+
+**The session's own bugs (kept honest)**
+
+- The integration test's first run hung for a minute: the daemon's
+  default 25 GiB floor against this sandbox's 3.4 GiB `MemAvailable`
+  means a 64 MiB lease queues forever. The test now passes its own
+  floor (`--floor 64M --emergency-floor 512M`) — the right fix, not
+  a skip: the test is about the log's chain, not the admission
+  arithmetic, and it must run the same on any box.
+- `cargo fmt --check` fails on ~50 spots — on the pristine baseline
+  too; the crate's convention is clippy-clean, not rustfmt-clean,
+  and the new code matches the house style (long prose comments,
+  which rustfmt wants to rewrap).
+
+**Open threads (carried, plus what this session added)**
+
+1. The Thor run, unchanged from session 2: `make device` (the seat
+   fills BENCHMARKS/PLACEMENT) and `tools/bakeoff.sh` — plus, now,
+   `cargo test` on `research/ecology-ledger`, whose integration test
+   is written to run on any box.
+2. The ledger fold-in's review: the branch is PR-ready against
+   thor-admit's head; if the seat prefers its own ~50 lines, the
+   branch is also a worked example of the exact semantics
+   (restart-resume, prefix tolerance, tamper naming) the verdict
+   described.
+3. The why door's landing review: the three answers in §4 are
+   arguments, not landings — the door itself still waits on Casey.
+4. The second recorded night (session 2's thread 5, unchanged): a
+   night where the bar truly binds.
+5. New: when the conductor work (never-wait, `655ac8f`) meets the
+   night level, the two schedulers should be written down against
+   each other — request-level deadlines vs night-level auctions are
+   different layers today, and the note that says so belongs in the
+   study doc the day they touch.
