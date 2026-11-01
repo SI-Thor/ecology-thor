@@ -1,5 +1,5 @@
-# Rust
-/target
+# Rust (any depth — the py crate builds standalone too)
+target/
 **/*.rs.bk
 
 # CUDA build artifacts (kernels/build/*.ptx are produced on-device by `make kernels`)

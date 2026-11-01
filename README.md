@@ -58,8 +58,12 @@ make bench
 # the full gate (fmt + clippy -D warnings + tests + secret scan):
 make guard
 
-# on the AGX Thor:
-sudo tools/thor-tune.sh         # pin clocks, MAXN/120W, RT checklist
+# on the AGX Thor (the ONE command for a stranger — docs/DEVICE.md):
+make device                     # preflight+guard+kernels+parity+ptx+bench+report
+                                # under the box rules (heavy.lock, 25 GiB floor)
+
+# the same steps, by hand:
+sudo tools/thor-tune.sh         # pin clocks, MAXN/120W, RT checklist (operator's call)
 make kernels                    # nvcc → build/ecology.ptx (sm_110)
 make test-device                # full device parity vs CPU, bit for bit
 make python                     # maturin wheel of the Python bindings
@@ -104,7 +108,8 @@ make python                     # maturin wheel of the Python bindings
 - Pathological stress (100k all-bidding): ~8 ms — the case the device
   sweeps exist for; the crossover table lives in PLACEMENT.md.
 - On-device numbers: BENCHMARKS.md §AGX Thor, to be filled by
-  `make bench` + `make test-device` on the box.
+  `make device` on the box (one script, PASS/FAIL lines, a paste-ready
+  report — docs/DEVICE.md).
 
 ## Where it's going
 
@@ -128,6 +133,7 @@ make python                     # maturin wheel of the Python bindings
 | [docs/PTX_NOTES.md](docs/PTX_NOTES.md) | the bit-exactness policy, the hand-PTX microkernel, the build matrix |
 | [docs/SAFETY.md](docs/SAFETY.md) | the memory-safety review policy (zero-dep core, the one `unsafe`, leak rules) |
 | [docs/BENCHMARKS.md](docs/BENCHMARKS.md) | protocol + honest numbers (sandbox + on-device tables) |
+| [docs/DEVICE.md](docs/DEVICE.md) | the one-script device run: what it does, expected PASS lines, box rules |
 | [docs/INTEGRATION.md](docs/INTEGRATION.md) | bridges to builder-ide / infinigen-thor / thor-world + the frozen JSON contract |
 | [docs/JOURNAL.md](docs/JOURNAL.md) | the build log — decisions and their reasons |
 

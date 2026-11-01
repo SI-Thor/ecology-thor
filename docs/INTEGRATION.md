@@ -77,7 +77,10 @@ past horizon → HARVESTED to UNKNOWN (never       │
                deleted; SIGUSR1 checkpoint first) ▼
                                     auction ──▶ admits next renders under
                                                 rails (GPU-seconds from the
-                                                128 GB box's real budget)
+                                                122 GiB box's real budget —
+                                                THOR.md; heavy work runs under
+                                                ~/lm-wt/heavy.lock with the
+                                                25 GiB floor the seats keep)
 ```
 
 Everything on the right already runs in this repo; the branch's

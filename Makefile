@@ -9,7 +9,7 @@ CARGO ?= cargo
 PY ?= python3
 
 .PHONY: all build test clippy fmt guard kernels ptx-check hand-ptx-check \
-        test-device python bench bench-report secrets push-guard clean
+        test-device device python bench bench-report secrets push-guard clean
 
 all: build
 

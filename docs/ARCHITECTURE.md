@@ -94,8 +94,9 @@ replay basis and the tamper-evidence of the necrology.
 ### Memory discipline
 
 Everything is preallocated at `Config::capacity` and **never grows**: the
-arena is the organism's memory budget (1M purposes ≈ 40 MB — noise on
-128 GB, but the *discipline* is what matters for WCET). Steady-state
+arena is the organism's memory budget (1M purposes ≈ 40 MB — noise on a
+122 GiB usable box — see THOR.md, but the *discipline* is what matters
+for WCET). Steady-state
 ticks allocate nothing. When the arena fills, spawn is refused
 (`SpawnError::Capacity`) — the organism would rather refuse to grow than
 degrade silently.
