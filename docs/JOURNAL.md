@@ -360,3 +360,79 @@ moved upstream while we slept. Three findings:
    each other — request-level deadlines vs night-level auctions are
    different layers today, and the note that says so belongs in the
    study doc the day they touch.
+
+---
+
+## Session 4 — 2026-11-01 — the swarm answers, and the ladder, built
+
+**Where the round started.** Main moved again while our branches wait
+(62c9f4e → 1719665, +9: critic-select and tiles-retrieval merged at
+1,627 tests, the dsswarm4 research note, the crew's constraint code
+re-measured, thor-fp4 published as its own repo). Nothing touched our
+seams (`core/ecology_bridge`, `Rail`'s axes, the why-door doc) — the
+three bridge commits ride clean. Our two research reads:
+
+1. **dsswarm 1–3 and dsswarm4 name the ecology four times** — the
+   shadow conductor "applies to the ecology auction", object leases
+   "pair with per-agent tokens and thor-admit's lease idea", the
+   trust ladder governs "what may run unattended", and the power
+   auction is "a seed for the ecology auction and thor-admit".
+2. **thor-fp4 is real and measured** (371–456 TFLOPS at K ≥ ~2048,
+   *slower* below K ~1280, weights 3.56× smaller, DIRECTIONS with a
+   certified-FP4 arithmetic bound).
+
+**What this session did, in order:**
+
+1. **The swarm addendum** (builder-ide `research/ecology-bridge`,
+   `0296507` + `0ae1a53`): study-doc §7, six answers from the ecology
+   side, code cited — the four layers "conductor" now names and why
+   none should grow the others' logic (the replay already is the
+   offline shadow); the trust ladder mapped onto class +
+   justification + the WHY machine; object leases as a doors problem
+   with the one law (object implies memory, never the reverse); the
+   power auction as the learned-peaks pattern on another rail, with
+   the `Rail`-grows-joules decision kept in the core; WAL + snapshot
+   (the chain names the log side, a checkpoint is a cache of the
+   fold); and thor-fp4's two regime asymmetries for whoever prices
+   the first FP4 night.
+2. **The harvest ladder, built** (ecology-thor `2339ef6`): §7.2's
+   honest gap — parole was re-request-triggered at a flat
+   first-harvest cap — closed in the kernel where the semantics are
+   ours. `harvests: u8` replaces the probation bool (+1 on every
+   ALIVE→UNKNOWN — the one seam doubt, the kill cascade and the
+   stall-law harvest all share; −1 on service, floor 0); the cap is
+   `2^-h` built from exponent bits (exact on CPU and device by
+   construction, h clamped at 126 so the *veto law* — never the cap —
+   kills lineages); the path takes its weakest paroled link (min);
+   and the compatibility law is tested: a never-harvested population
+   is **bit-identical** to the old formula, `parole_cap(1) ==
+   PROBATION_CAP`. All four implementations moved together per the
+   parity gate's rule (ledger, reference mirror, device launcher,
+   sm_110 kernel — the cap now derived in-register from the u8
+   column, no launch parameter). 49 tests on CPU; the randomized
+   parity population now exercises the whole ladder
+   (doubt→revive→doubt→serve); the device leg rides the harness the
+   seat already runs. Clippy clean across the workspace.
+
+**The session's own bugs (kept honest)**
+
+- A docstring edit joined two lines in `why.rs`'s module header (the
+  replace ate a newline); caught in the post-edit review, fixed
+  before it could mislead.
+- The unused-import warning after the sweep stopped using
+  `PROBATION_CAP` directly — moved into the test module where its one
+  remaining user (the first-rung identity test) lives.
+
+**Open threads (carried)**
+
+1. The Thor run, now three-legged: `make device` + `tools/bakeoff.sh`
+   + `cargo test -p ecology-cuda --features cuda` (the ladder's
+   bit-identity leg).
+2. The ledger fold-in's review (`research/ecology-ledger`, PR-ready).
+3. The why door's landing review (three answers in §4 of the proposal).
+4. The second recorded night, ideally one where the bar binds.
+5. From the addendum, if the swarm round adopts any of it: the shadow
+   run of the auction against a live night (the runner journals the
+   bid set — tiles rule 8 — and the read-only mirror scores it), and
+   the object-lease door as its own proposal with the one law written
+   in.
