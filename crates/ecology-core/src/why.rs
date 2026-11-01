@@ -26,8 +26,9 @@
 //! * [`WhyLedger::recompute_aggregates`] computes, per node, the
 //!   chain-aggregated [`WhyLedger::justification`] in one level-synchronous
 //!   sweep: alive-fraction of the root path × weakest-link freshness, zeroed
-//!   by any DEAD ancestor, capped at [`crate::freshness::PROBATION_CAP`]
-//!   while any ALIVE link is on parole. This is the exact tree case of
+//!   by any DEAD ancestor, capped by the path's parole
+//!   ([`parole_cap`]: `2^-harvests`, weakest link wins) while any ALIVE
+//!   link is on parole. This is the exact tree case of
 //!   `why.py`'s `justification()` (a tree has exactly one path).
 //! * [`WhyLedger::reap`] lapses ALIVE nodes unattested for longer than the
 //!   horizon to UNKNOWN — per-node, no cascade (an unserved purpose questions
@@ -43,9 +44,27 @@
 //! [`WhyLedger::recompute_aggregates`] is written level-synchronously *on
 //! purpose*: the same level loop is what the device version parallelizes.
 
-use crate::freshness::{exp2_fast, link_freshness, PROBATION_CAP};
+use crate::freshness::{exp2_fast, link_freshness};
 use crate::ids::{EntityId, NO_BEAT, NO_PARENT};
 use crate::journal::Reason;
+
+/// The parole cap for a link harvested `h` times: `2^-h`, so one more
+/// harvest halves the bid strength again and service climbs one rung
+/// back. Constructed from exponent bits — exact by construction, on CPU
+/// (`f32::from_bits`) and device (`__int_as_float`) alike, the
+/// bit-exactness discipline the whole sweep follows. `h` clamps at 126:
+/// below that the cap would go subnormal, and a lineage harvested 126
+/// times is dead in every way that matters — the *veto law* is what
+/// kills lineages, never the cap, so even it keeps a nonzero (if
+/// vanishing) bid strength.
+///
+/// The first rung is the old constant: `parole_cap(1) == PROBATION_CAP`
+/// (0.5) — the pre-ladder semantics are the ladder's first step.
+#[inline]
+pub fn parole_cap(h: u8) -> f32 {
+    let e = (h as u32).min(126);
+    f32::from_bits((127 - e) << 23)
+}
 
 /// The four states of purpose. Byte-sized so the whole state column is one
 /// cache-friendly array the GPU can stream.
@@ -124,8 +143,14 @@ pub struct WhyLedger {
     pub(crate) beat_count: Vec<u32>,
     /// Root deadline (tick); `u32::MAX` = immortal.
     pub(crate) until: Vec<u32>,
-    /// Revived-but-unserved: justification capped while true.
-    pub(crate) probation: Vec<bool>,
+    /// Harvest count — how many times this purpose was harvested
+    /// (ALIVE → UNKNOWN: a watchdog stop, an external doubt, a kill's
+    /// cascade). Parole is priced by it: an ALIVE link bids at
+    /// `2^-harvests` ([`parole_cap`]) until service earns the rungs back
+    /// (each accepted beat or `run_under` stamp decrements it, floor 0).
+    /// The trust ladder (dsswarm4) as arithmetic: one bad artifact
+    /// demotes, service re-earns level by level.
+    pub(crate) harvests: Vec<u8>,
     /// Purpose mass — the conserved quantity of the WHY economy.
     pub(crate) mass: Vec<f32>,
 
@@ -138,8 +163,12 @@ pub struct WhyLedger {
     pub(crate) chain_min_fresh: Vec<f32>,
     /// Any DEAD ancestor on the path (inclusive of self)?
     pub(crate) chain_dead: Vec<bool>,
-    /// Any ALIVE-and-probation link on the path?
-    pub(crate) chain_probation: Vec<bool>,
+    /// Weakest parole cap on the path's ALIVE links (1.0 = uncapped):
+    /// `min` over links of each link's `2^-harvests` — a path is as
+    /// trustworthy as its weakest paroled link, and one more harvest
+    /// halves it again. Replaces the old any-probation bool, which
+    /// priced every parole at the first-harvest cap.
+    pub(crate) chain_parole_cap: Vec<f32>,
     /// Chain-aggregated justification, 0..1 — the attention economy's `j`.
     pub(crate) justification: Vec<f32>,
 
@@ -189,13 +218,13 @@ impl WhyLedger {
             last_beat: vec![NO_BEAT; cap],
             beat_count: vec![0; cap],
             until: vec![u32::MAX; cap],
-            probation: vec![false; cap],
+            harvests: vec![0; cap],
             mass: vec![0.0; cap],
             chain_alive: vec![0; cap],
             chain_len: vec![0; cap],
             chain_min_fresh: vec![1.0; cap],
             chain_dead: vec![false; cap],
-            chain_probation: vec![false; cap],
+            chain_parole_cap: vec![1.0; cap],
             justification: vec![0.0; cap],
             mass_spawned_total: 0.0,
             mass_dissipated_total: 0.0,
@@ -291,7 +320,7 @@ impl WhyLedger {
         };
         self.beat_count[idx as usize] = 0;
         self.until[idx as usize] = until.unwrap_or(u32::MAX);
-        self.probation[idx as usize] = false;
+        self.harvests[idx as usize] = 0;
         self.mass[idx as usize] = mass.max(0.0);
         self.mass_spawned_total += mass.max(0.0) as f64;
         self.chain_len[idx as usize] = depth as u32 + 1;
@@ -328,6 +357,15 @@ impl WhyLedger {
             self.mass[idx] = 0.0;
         }
         self.state[idx] = to;
+        // The harvest count: every ALIVE → UNKNOWN transition is one
+        // harvest (an external doubt, a kill's cascade, a watchdog stop
+        // mapped through the stall law), and each one prices the next
+        // parole one rung lower — `2^-harvests` while ALIVE again. This
+        // is the one place all harvest paths meet, so the ladder rule
+        // lives here, once.
+        if from == WhyState::Alive && to == WhyState::Unknown {
+            self.harvests[idx] = self.harvests[idx].saturating_add(1);
+        }
         match from {
             WhyState::Alive => self.counts.alive -= 1,
             WhyState::Dead => self.counts.dead -= 1,
@@ -367,7 +405,7 @@ impl WhyLedger {
         }
         self.last_beat[idx] = t;
         self.beat_count[idx] = self.beat_count[idx].wrapping_add(1);
-        self.probation[idx] = false;
+        self.harvests[idx] = self.harvests[idx].saturating_sub(1); // service earns a rung back
         true
     }
 
@@ -382,7 +420,7 @@ impl WhyLedger {
             if self.state[cur] == WhyState::Alive && t > self.last_beat[cur] {
                 self.last_beat[cur] = t;
                 self.beat_count[cur] = self.beat_count[cur].wrapping_add(1);
-                self.probation[cur] = false;
+                self.harvests[cur] = self.harvests[cur].saturating_sub(1); // a rung back
                 stamped += 1;
             }
             cur = self.parent[cur] as usize;
@@ -391,14 +429,15 @@ impl WhyLedger {
     }
 
     /// UNKNOWN → ALIVE (questionable purposes may be re-justified). The
-    /// node returns *on parole* — its justification is capped at
-    /// [`PROBATION_CAP`] until it is served again.
+    /// node returns *on parole*: its harvest count (≥ 1 — it reached
+    /// UNKNOWN by a harvest) prices its bid at `2^-harvests` until
+    /// service earns the rungs back. Reviving never clears the count;
+    /// only service does — the ladder is climbed by work, not by asking.
     pub fn revive(&mut self, id: EntityId, reason: Reason, tick: u32) -> bool {
         let idx = id.index();
         if idx >= self.len || self.state[idx] != WhyState::Unknown {
             return false;
         }
-        self.probation[idx] = true;
         self.last_beat[idx] = tick as i64; // revival is itself an attestation
         self.transition(idx, WhyState::Alive, reason, tick);
         true
@@ -411,7 +450,6 @@ impl WhyLedger {
         if idx >= self.len || self.state[idx] != WhyState::Dead {
             return false;
         }
-        self.probation[idx] = true;
         self.last_beat[idx] = tick as i64;
         self.transition(idx, WhyState::Alive, reason, tick);
         true
@@ -582,14 +620,23 @@ impl WhyLedger {
     /// * `chain_alive/chain_len` — the alive fraction of the root path;
     /// * `chain_min_fresh` — the weakest ALIVE-link freshness on the path;
     /// * `chain_dead` — any DEAD ancestor (inclusive) ⇒ justification 0;
-    /// * `chain_probation` — any ALIVE-and-parole link ⇒ cap 0.5;
-    /// * `justification` — the product, the attention economy's `j`.
+    /// * `chain_parole_cap` — the weakest parole on the path's ALIVE links,
+    ///   `min` of each link's `2^-harvests` (1.0 = uncapped) — one more
+    ///   harvest halves it again, service climbs one rung back;
+    /// * `justification` — the product, the attention economy's `j`, then
+    ///   capped by the path's parole.
     ///
-    /// This is exactly `why.py::justification()` specialized to trees (a
-    /// tree has one path), computed for the whole population in one O(N)
-    /// pass whose inner loop is embarrassingly parallel per level — the
-    /// device version in `crates/ecology-cuda/kernels` parallelizes each
-    /// level as one kernel launch (or one grid-stride phase).
+    /// For a population where every node has `harvests == 0` the cap is
+    /// 1.0 everywhere, `min(j, 1.0) == j` for the product of an
+    /// alive-fraction (≤ 1) and a freshness (≤ 1), and the sweep is
+    /// **bit-identical** to the pre-ladder formula — the ladder only
+    /// changes what parole costs, never what a clean path pays.
+    ///
+    /// This is `why.py::justification()` specialized to trees (a tree has
+    /// one path), computed for the whole population in one O(N) pass whose
+    /// inner loop is embarrassingly parallel per level — the device
+    /// version in `crates/ecology-cuda/kernels` parallelizes each level
+    /// as one kernel launch (or one grid-stride phase).
     pub fn recompute_aggregates(&mut self, now: u32, horizon: u32) {
         for level_nodes in &self.levels {
             for &idx in level_nodes.iter() {
@@ -602,7 +649,7 @@ impl WhyLedger {
                     self.chain_len[i] = 1;
                     self.chain_min_fresh[i] = fresh;
                     self.chain_dead[i] = self.state[i] == WhyState::Dead;
-                    self.chain_probation[i] = alive && self.probation[i];
+                    self.chain_parole_cap[i] = if alive { parole_cap(self.harvests[i]) } else { 1.0 };
                 } else {
                     let pi = p as usize;
                     self.chain_alive[i] = self.chain_alive[pi] + alive as u32;
@@ -614,8 +661,14 @@ impl WhyLedger {
                         self.chain_min_fresh[pi]
                     };
                     self.chain_dead[i] = self.chain_dead[pi] || self.state[i] == WhyState::Dead;
-                    self.chain_probation[i] =
-                        self.chain_probation[pi] || (alive && self.probation[i]);
+                    let own = if alive { parole_cap(self.harvests[i]) } else { 1.0 };
+                    // min() again — the path is as trustworthy as its
+                    // weakest paroled link.
+                    self.chain_parole_cap[i] = if own < self.chain_parole_cap[pi] {
+                        own
+                    } else {
+                        self.chain_parole_cap[pi]
+                    };
                 }
                 // justification()
                 if self.chain_dead[i] || self.chain_alive[i] == 0 {
@@ -623,8 +676,8 @@ impl WhyLedger {
                 } else {
                     let base = self.chain_alive[i] as f32 / self.chain_len[i] as f32;
                     let mut j = base * self.chain_min_fresh[i];
-                    if self.chain_probation[i] {
-                        j = if j < PROBATION_CAP { j } else { PROBATION_CAP };
+                    if j > self.chain_parole_cap[i] {
+                        j = self.chain_parole_cap[i];
                     }
                     self.justification[i] = j;
                 }
@@ -684,10 +737,17 @@ impl WhyLedger {
         self.parent[i]
     }
 
-    /// Parole flag (device-mirror accessor).
+    /// On parole (harvest count > 0)? Kept for callers that only want the
+    /// boolean; the count itself is [`WhyLedger::harvests_at`].
     #[inline]
     pub fn probation_at(&self, i: usize) -> bool {
-        self.probation[i]
+        self.harvests[i] > 0
+    }
+
+    /// The harvest count — the parole rung (see [`parole_cap`]).
+    #[inline]
+    pub fn harvests_at(&self, i: usize) -> u8 {
+        self.harvests[i]
     }
 
     /// Depth-grouped node indices — the level plan the device sweep walks
@@ -727,6 +787,7 @@ impl WhyLedger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::freshness::PROBATION_CAP;
 
     fn ledger() -> WhyLedger {
         WhyLedger::new(64)
@@ -871,6 +932,102 @@ mod tests {
         assert!(w.revive(root, Reason::Revived, 100));
         w.recompute_aggregates(100, 90);
         assert_eq!(w.justification(root), PROBATION_CAP);
+    }
+
+    #[test]
+    fn the_ladder_halves_the_parole_each_harvest() {
+        // The trust ladder as arithmetic: one more harvest halves the bid
+        // strength again; nothing but service climbs it back.
+        let mut w = WhyLedger::new(16);
+        let root = w
+            .spawn(None, 1.0, None, SpawnState::Alive, 0, Reason::Born)
+            .unwrap();
+        // Harvested twice (doubt → revive → doubt → revive).
+        for t in [10u32, 20] {
+            w.doubt(root, Reason::Custom, t);
+            assert!(w.revive(root, Reason::Revived, t));
+        }
+        assert_eq!(w.harvests_at(root.index()), 2);
+        w.recompute_aggregates(20, 90);
+        // fresh = 1 (last beat = the revival at 20), base = 1, so the
+        // justification IS the cap: 0.25 — not the flat first-harvest 0.5.
+        assert_eq!(w.justification(root), 0.25);
+
+        // Service earns the rungs back one at a time — never a reset.
+        assert!(w.heartbeat(root, 30));
+        assert_eq!(w.harvests_at(root.index()), 1);
+        w.recompute_aggregates(30, 90);
+        assert_eq!(w.justification(root), PROBATION_CAP);
+        assert!(w.heartbeat(root, 40));
+        assert_eq!(w.harvests_at(root.index()), 0);
+        w.recompute_aggregates(40, 90);
+        // Uncapped: the ladder only changes what parole costs, never what
+        // a clean path pays (the product with cap 1.0 is the product).
+        assert_eq!(w.justification(root), 1.0);
+    }
+
+    #[test]
+    fn the_weakest_paroled_link_prices_the_path() {
+        // A twice-harvested parent caps its child's justification at 0.25
+        // even though the child itself was never harvested — the path is
+        // as trustworthy as its weakest paroled link.
+        let mut w = WhyLedger::new(16);
+        let root = w
+            .spawn(None, 1.0, None, SpawnState::Alive, 0, Reason::Born)
+            .unwrap();
+        let leaf = w
+            .spawn(Some(root), 1.0, None, SpawnState::Alive, 5, Reason::Born)
+            .unwrap();
+        for t in [10u32, 11] {
+            w.doubt(root, Reason::Custom, t);
+            assert!(w.revive(root, Reason::Revived, t));
+        }
+        w.recompute_aggregates(11, 90);
+        assert_eq!(w.justification(root), 0.25);
+        assert_eq!(w.justification(leaf), 0.25);
+
+        // The parent serving its way back to one rung lifts the child too.
+        assert!(w.heartbeat(root, 20));
+        w.recompute_aggregates(20, 90);
+        assert_eq!(w.justification(leaf), PROBATION_CAP);
+    }
+
+    #[test]
+    fn never_harvested_nodes_are_bit_identical_to_the_old_formula() {
+        // The compatibility law: with no harvests anywhere the cap is 1.0,
+        // min(j, 1.0) == j for a product of an alive-fraction (≤ 1) and a
+        // freshness (≤ 1), and the sweep equals the pre-ladder formula
+        // computed by hand.
+        let mut w = WhyLedger::new(64);
+        let root = w
+            .spawn(None, 1.0, None, SpawnState::Alive, 0, Reason::Born)
+            .unwrap();
+        let mid = w
+            .spawn(Some(root), 1.0, None, SpawnState::Alive, 2, Reason::Born)
+            .unwrap();
+        let leaf = w
+            .spawn(Some(mid), 1.0, None, SpawnState::Alive, 4, Reason::Born)
+            .unwrap();
+        assert!(w.heartbeat(root, 12));
+        w.recompute_aggregates(12, 90);
+        // By hand: alive fraction 1.0, freshness from link_freshness (all
+        // links beat within the horizon), no dead, no parole.
+        let fresh = crate::freshness::link_freshness(true, 12, 0, 12, 90);
+        assert_eq!(w.justification(root), 1.0 * fresh);
+        assert_eq!(w.justification(mid), 1.0 * fresh);
+        assert_eq!(w.justification(leaf), 1.0 * fresh);
+        assert_eq!(w.harvests_at(leaf.index()), 0);
+        assert!(!w.probation_at(leaf.index()));
+    }
+
+    #[test]
+    fn the_cap_clamps_at_the_smallest_normal() {
+        // A serially-harvested lineage keeps a nonzero (if vanishing) bid
+        // strength: the veto law kills lineages, never the cap.
+        assert_eq!(parole_cap(126), f32::MIN_POSITIVE);
+        assert_eq!(parole_cap(127), f32::MIN_POSITIVE);
+        assert_eq!(parole_cap(255), f32::MIN_POSITIVE);
+        assert!(parole_cap(3) < parole_cap(2));
     }
 
     #[test]

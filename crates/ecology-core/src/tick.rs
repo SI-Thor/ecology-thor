@@ -577,8 +577,10 @@ impl Ecology {
     pub fn present_slice(&self) -> &[bool] {
         &self.attention.present
     }
-    pub fn probation_slice(&self) -> &[bool] {
-        &self.ledger.probation
+    /// Harvest counts (the parole rungs) — the device mirror streams this
+    /// column; see [`crate::why::parole_cap`].
+    pub fn harvests_slice(&self) -> &[u8] {
+        &self.ledger.harvests
     }
     /// Depth-grouped node indices — the level plan for the device sweep.
     pub fn levels(&self) -> &[Vec<u32>] {

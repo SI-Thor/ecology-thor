@@ -134,7 +134,7 @@ fn cpu_leg_reference_matches_ledger() {
         let last_beat: Vec<i64> = (0..n).map(|i| eco.last_beat_slice()[i]).collect();
         let born: Vec<u32> = (0..n).map(|i| eco.born_slice()[i]).collect();
         let parent: Vec<u32> = (0..n).map(|i| eco.parent_slice()[i]).collect();
-        let probation: Vec<bool> = (0..n).map(|i| eco.probation_slice()[i]).collect();
+        let harvests: Vec<u8> = (0..n).map(|i| eco.harvests_slice()[i]).collect();
 
         let mut fresh = vec![0.0f32; n];
         reference::link_freshness_all(
@@ -151,21 +151,20 @@ fn cpu_leg_reference_matches_ledger() {
         let mut chain_len = vec![0u32; n];
         let mut chain_min_fresh = vec![1.0f32; n];
         let mut chain_dead = vec![false; n];
-        let mut chain_probation = vec![false; n];
+        let mut chain_parole_cap = vec![1.0f32; n];
         let mut justification = vec![0.0f32; n];
         for level in &levels {
             reference::justify_level(
                 level,
                 &parent,
                 &states,
-                &probation,
+                &harvests,
                 &fresh,
-                ecology_core::freshness::PROBATION_CAP,
                 &mut chain_alive,
                 &mut chain_len,
                 &mut chain_min_fresh,
                 &mut chain_dead,
-                &mut chain_probation,
+                &mut chain_parole_cap,
                 &mut justification,
             );
         }
@@ -240,7 +239,7 @@ mod device_leg {
             .sweep_freshness(now, cfg.horizon_ticks)
             .expect("freshness kernel");
         sweeper
-            .sweep_justify(ecology_core::freshness::PROBATION_CAP)
+            .sweep_justify()
             .expect("justify kernels");
         sweeper.synchronize();
 
@@ -251,7 +250,7 @@ mod device_leg {
         let last_beat: Vec<i64> = (0..n).map(|i| eco.last_beat_slice()[i]).collect();
         let born: Vec<u32> = (0..n).map(|i| eco.born_slice()[i]).collect();
         let parent: Vec<u32> = (0..n).map(|i| eco.parent_slice()[i]).collect();
-        let probation: Vec<bool> = (0..n).map(|i| eco.probation_slice()[i]).collect();
+        let harvests: Vec<u8> = (0..n).map(|i| eco.harvests_slice()[i]).collect();
         let mut fresh = vec![0.0f32; n];
         reference::link_freshness_all(
             &states,
@@ -266,21 +265,20 @@ mod device_leg {
         let mut chain_len = vec![0u32; n];
         let mut chain_min_fresh = vec![1.0f32; n];
         let mut chain_dead = vec![false; n];
-        let mut chain_probation = vec![false; n];
+        let mut chain_parole_cap = vec![1.0f32; n];
         let mut justification = vec![0.0f32; n];
         for level in &levels {
             reference::justify_level(
                 level,
                 &parent,
                 &states,
-                &probation,
+                &harvests,
                 &fresh,
-                ecology_core::freshness::PROBATION_CAP,
                 &mut chain_alive,
                 &mut chain_len,
                 &mut chain_min_fresh,
                 &mut chain_dead,
-                &mut chain_probation,
+                &mut chain_parole_cap,
                 &mut justification,
             );
         }

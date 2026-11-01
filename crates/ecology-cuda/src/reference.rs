@@ -16,7 +16,7 @@
 //! reference and the device all compute the same function.
 
 use ecology_core::freshness::{exp2_fast, link_freshness};
-use ecology_core::why::WhyState;
+use ecology_core::why::{parole_cap, WhyState};
 
 /// WhyState as the byte the device sees (`#[repr(u8)]`).
 #[inline]
@@ -54,14 +54,13 @@ pub fn justify_level(
     nodes: &[u32],
     parent: &[u32],
     states: &[WhyState],
-    probation: &[bool],
+    harvests: &[u8],
     fresh: &[f32],
-    probation_cap: f32,
     chain_alive: &mut [u32],
     chain_len: &mut [u32],
     chain_min_fresh: &mut [f32],
     chain_dead: &mut [bool],
-    chain_probation: &mut [bool],
+    chain_parole_cap: &mut [f32],
     justification: &mut [f32],
 ) {
     const NO_PARENT: u32 = u32::MAX;
@@ -74,7 +73,7 @@ pub fn justify_level(
             chain_len[i] = 1;
             chain_min_fresh[i] = fresh[i];
             chain_dead[i] = states[i] == WhyState::Dead;
-            chain_probation[i] = alive && probation[i];
+            chain_parole_cap[i] = if alive { parole_cap(harvests[i]) } else { 1.0 };
         } else {
             let pi = p as usize;
             chain_alive[i] = chain_alive[pi] + alive as u32;
@@ -83,15 +82,17 @@ pub fn justify_level(
             let pf = chain_min_fresh[pi];
             chain_min_fresh[i] = if f < pf { f } else { pf };
             chain_dead[i] = chain_dead[pi] || states[i] == WhyState::Dead;
-            chain_probation[i] = chain_probation[pi] || (alive && probation[i]);
+            let own = if alive { parole_cap(harvests[i]) } else { 1.0 };
+            let up = chain_parole_cap[pi];
+            chain_parole_cap[i] = if own < up { own } else { up };
         }
         if chain_dead[i] || chain_alive[i] == 0 {
             justification[i] = 0.0;
         } else {
             let base = chain_alive[i] as f32 / chain_len[i] as f32;
             let mut j = base * chain_min_fresh[i];
-            if chain_probation[i] && j > probation_cap {
-                j = probation_cap;
+            if j > chain_parole_cap[i] {
+                j = chain_parole_cap[i];
             }
             justification[i] = j;
         }
@@ -230,7 +231,25 @@ mod tests {
             if rng.next_f32() < 0.1 {
                 ledger.doubt(id, ecology_core::Reason::Custom, 500);
             }
+            // The ladder, exercised: revive some doubted nodes, doubt a
+            // few of those again (two harvests), and let service earn
+            // rungs back — so the parity population contains every cap
+            // the sweep can compute.
+            if rng.next_f32() < 0.5 && ledger.state(id) == Some(WhyState::Unknown) {
+                ledger.revive(id, Reason::Revived, 500);
+                if rng.next_f32() < 0.3 {
+                    ledger.doubt(id, Reason::Custom, 501); // harvested twice
+                }
+            }
+            if rng.next_f32() < 0.3 {
+                ledger.heartbeat(id, 700 + rng.next_bounded(150)); // a rung back
+            }
         }
+        // The first rung is the old constant — the pre-ladder semantics
+        // are the ladder's first step, exactly.
+        assert_eq!(parole_cap(1), PROBATION_CAP);
+        assert_eq!(parole_cap(0), 1.0);
+        assert_eq!(parole_cap(2), 0.25);
         let now = 900u32;
         let horizon = 600u32;
 
@@ -245,7 +264,7 @@ mod tests {
             .collect();
         let born: Vec<u32> = (0..n).map(|i| ledger.born_at(i)).collect();
         let parent: Vec<u32> = (0..n).map(|i| ledger.parent_at(i)).collect();
-        let probation: Vec<bool> = (0..n).map(|i| ledger.probation_at(i)).collect();
+        let harvests: Vec<u8> = (0..n).map(|i| ledger.harvests_at(i)).collect();
         let mut fresh = vec![0.0f32; n];
         link_freshness_all(&states, &last_beat, &born, now, horizon, &mut fresh);
 
@@ -255,21 +274,20 @@ mod tests {
         let mut chain_len = vec![0u32; n];
         let mut chain_min_fresh = vec![1.0f32; n];
         let mut chain_dead = vec![false; n];
-        let mut chain_probation = vec![false; n];
+        let mut chain_parole_cap = vec![1.0f32; n];
         let mut justification = vec![0.0f32; n];
         for level in &levels {
             justify_level(
                 level,
                 &parent,
                 &states,
-                &probation,
+                &harvests,
                 &fresh,
-                PROBATION_CAP,
                 &mut chain_alive,
                 &mut chain_len,
                 &mut chain_min_fresh,
                 &mut chain_dead,
-                &mut chain_probation,
+                &mut chain_parole_cap,
                 &mut justification,
             );
         }

@@ -90,17 +90,16 @@ extern "C" __global__ void link_freshness_kernel(
 // worth mirroring on the GPU at all.
 extern "C" __global__ void justify_level_kernel(
     unsigned                 level_len,
-    float                    probation_cap,   // 0.5f (constant for clarity)
     const unsigned*          __restrict__ nodes,   // this level's indices
     const unsigned*          __restrict__ parent,
     const unsigned char*     __restrict__ state,
-    const unsigned char*     __restrict__ probation,
+    const unsigned char*     __restrict__ harvests, // parole rungs (u8)
     const float*             __restrict__ fresh,   // link_freshness output
     unsigned*                __restrict__ chain_alive,
     unsigned*                __restrict__ chain_len,
     float*                   __restrict__ chain_min_fresh,
     unsigned char*           __restrict__ chain_dead,
-    unsigned char*           __restrict__ chain_probation,
+    float*                   __restrict__ chain_parole_cap,
     float*                   __restrict__ justification)
 {
     unsigned k = blockIdx.x * blockDim.x + threadIdx.x;
@@ -109,12 +108,23 @@ extern "C" __global__ void justify_level_kernel(
         const unsigned i = nodes[k];
         const unsigned p = parent[i];
         const unsigned char alive = (state[i] == WHY_ALIVE);
+        // The parole cap for a link harvested h times: 2^-h, assembled
+        // from exponent bits — the exact twin of Rust's
+        // `ecology_core::why::parole_cap` (`f32::from_bits((127-e)<<23)`
+        // ≡ `__int_as_float((127-e)<<23)`), so the ladder's arithmetic
+        // has one definition and two bit-identical spellings. h clamps
+        // at 126: the cap never goes subnormal, and the veto law — not
+        // the cap — is what kills lineages.
+        const unsigned char h = harvests[i];
+        const float own = alive
+            ? __int_as_float((127u - (unsigned)(h > 126u ? 126u : h)) << 23)
+            : 1.0f;
         if (p == NO_PARENT) {
             chain_alive[i] = alive;
             chain_len[i] = 1u;
             chain_min_fresh[i] = fresh[i];
             chain_dead[i] = (state[i] == WHY_DEAD) ? 1u : 0u;
-            chain_probation[i] = (alive && probation[i]) ? 1u : 0u;
+            chain_parole_cap[i] = own;
         } else {
             chain_alive[i] = chain_alive[p] + alive;
             chain_len[i] = chain_len[p] + 1u;
@@ -123,15 +133,17 @@ extern "C" __global__ void justify_level_kernel(
             const float pf = chain_min_fresh[p];
             chain_min_fresh[i] = (f < pf) ? f : pf;
             chain_dead[i] = (chain_dead[p] || state[i] == WHY_DEAD) ? 1u : 0u;
-            chain_probation[i] =
-                (chain_probation[p] || (alive && probation[i])) ? 1u : 0u;
+            // The path is as trustworthy as its weakest paroled link —
+            // min() again, bit-exact the same way.
+            const float up = chain_parole_cap[p];
+            chain_parole_cap[i] = (own < up) ? own : up;
         }
         if (chain_dead[i] || chain_alive[i] == 0u) {
             justification[i] = 0.0f;
         } else {
             const float base = (float)chain_alive[i] / (float)chain_len[i];
             float j = base * chain_min_fresh[i];
-            if (chain_probation[i] && j > probation_cap) j = probation_cap;
+            if (j > chain_parole_cap[i]) j = chain_parole_cap[i];
             justification[i] = j;
         }
     }

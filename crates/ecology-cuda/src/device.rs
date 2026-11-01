@@ -105,7 +105,10 @@ pub struct DeviceSweeper {
     last_beat: UnifiedSlice<i64>,
     born: UnifiedSlice<u32>,
     parent: UnifiedSlice<u32>,
-    probation: UnifiedSlice<u8>,
+    /// Harvest counts (parole rungs) — u8 column, the same shape the
+    /// ledger's `harvests_slice` produces; the kernel derives each link's
+    /// `2^-h` cap in-register.
+    harvests: UnifiedSlice<u8>,
     mass: UnifiedSlice<f32>,
     present: UnifiedSlice<u8>,
     urgency: UnifiedSlice<f32>,
@@ -119,7 +122,8 @@ pub struct DeviceSweeper {
     chain_len: UnifiedSlice<u32>,
     chain_min_fresh: UnifiedSlice<f32>,
     chain_dead: UnifiedSlice<u8>,
-    chain_probation: UnifiedSlice<u8>,
+    /// Weakest parole cap on the path's ALIVE links (f32, 1.0 = uncapped).
+    chain_parole_cap: UnifiedSlice<f32>,
     justification: UnifiedSlice<f32>,
     score: UnifiedSlice<f32>,
 
@@ -192,7 +196,7 @@ impl DeviceSweeper {
                 last_beat: alloc_filled(&ctx, n, 0i64)?,
                 born: alloc_filled(&ctx, n, 0u32)?,
                 parent: alloc_filled(&ctx, n, u32::MAX)?,
-                probation: alloc_filled(&ctx, n, 0u8)?,
+                harvests: alloc_filled(&ctx, n, 0u8)?,
                 mass: alloc_filled(&ctx, n, 0.0f32)?,
                 present: alloc_filled(&ctx, n, 0u8)?,
                 urgency: alloc_filled(&ctx, n, 0.0f32)?,
@@ -204,7 +208,7 @@ impl DeviceSweeper {
                 chain_len: alloc_filled(&ctx, n, 1u32)?,
                 chain_min_fresh: alloc_filled(&ctx, n, 1.0f32)?,
                 chain_dead: alloc_filled(&ctx, n, 0u8)?,
-                chain_probation: alloc_filled(&ctx, n, 0u8)?,
+                chain_parole_cap: alloc_filled(&ctx, n, 1.0f32)?,
                 justification: alloc_filled(&ctx, n, 0.0f32)?,
                 score: alloc_filled(&ctx, n, 0.0f32)?,
                 reaped: alloc_filled(&ctx, 1, 0u32)?,
@@ -239,10 +243,8 @@ impl DeviceSweeper {
             dst[..n].copy_from_slice(&eco.parent_slice()[..n]);
         }
         {
-            let dst = self.probation.as_mut_slice().map_err(as_slice_err)?;
-            for (i, p) in eco.probation_slice().iter().take(n).enumerate() {
-                dst[i] = *p as u8;
-            }
+            let dst = self.harvests.as_mut_slice().map_err(as_slice_err)?;
+            dst[..n].copy_from_slice(&eco.harvests_slice()[..n]);
         }
         {
             let dst = self.mass.as_mut_slice().map_err(as_slice_err)?;
@@ -299,8 +301,11 @@ impl DeviceSweeper {
     }
 
     /// `justify_level_kernel` for every level, in order (parents first —
-    /// the level plan is the dependency graph).
-    pub fn sweep_justify(&mut self, probation_cap: f32) -> DevResult<()> {
+    /// the level plan is the dependency graph). The parole cap is not a
+    /// parameter any more: the kernel derives each link's `2^-harvests`
+    /// in-register, so the ladder's arithmetic has exactly one
+    /// definition — `ecology_core::why::parole_cap` — mirrored by bits.
+    pub fn sweep_justify(&mut self) -> DevResult<()> {
         for &(off, len) in &self.level_ranges {
             if len == 0 {
                 continue;
@@ -316,17 +321,16 @@ impl DeviceSweeper {
                 self.stream
                     .launch_builder(&self.f_justify)
                     .arg(&len)
-                    .arg(&probation_cap)
                     .arg(&level_nodes)
                     .arg(&self.parent)
                     .arg(&self.state)
-                    .arg(&self.probation)
+                    .arg(&self.harvests)
                     .arg(&self.fresh)
                     .arg(&self.chain_alive)
                     .arg(&self.chain_len)
                     .arg(&self.chain_min_fresh)
                     .arg(&self.chain_dead)
-                    .arg(&self.chain_probation)
+                    .arg(&self.chain_parole_cap)
                     .arg(&self.justification)
                     .launch(cfg)?;
             }
