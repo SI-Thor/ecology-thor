@@ -111,6 +111,16 @@ make python                     # maturin wheel of the Python bindings
   `make device` on the box (one script, PASS/FAIL lines, a paste-ready
   report — docs/DEVICE.md).
 
+## The recorded-night evidence
+
+[`docs/analysis/mini-night-2-replay.md`](docs/analysis/mini-night-2-replay.md)
+— builder-ide's mini-night-2 replayed through the auction (tools/replay_mini_night2.py):
+at the runner's own prices the auction makes the identical allocation (drop-in parity);
+priced from the box's own night-1 ledger, the veto law refuses the six third-seed
+variants whose expected gain was exactly zero — 30.6% less GPU, 31.6% less wall,
+the same winners — and the learned-peak pricing exposes that the 11.76-min bar
+was computed from the wrong band (the same night is a 54% night on the right one).
+
 ## Where it's going
 
 - **v0.1 (this)**: Rust kernel + reference mirrors + device kernels +
@@ -136,6 +146,7 @@ make python                     # maturin wheel of the Python bindings
 | [docs/DEVICE.md](docs/DEVICE.md) | the one-script device run: what it does, expected PASS lines, box rules |
 | [docs/INTEGRATION.md](docs/INTEGRATION.md) | bridges to builder-ide / infinigen-thor / thor-world + the frozen JSON contract |
 | [docs/JOURNAL.md](docs/JOURNAL.md) | the build log — decisions and their reasons |
+| [docs/analysis/mini-night-2-replay.md](docs/analysis/mini-night-2-replay.md) | the auction vs the night runner on a recorded night |
 
 ## License
 
